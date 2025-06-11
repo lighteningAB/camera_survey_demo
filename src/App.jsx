@@ -122,25 +122,28 @@ function App() {
       e.preventDefault();
       handleZoom(idx, e.deltaY, { x: e.nativeEvent.offsetX, y: e.nativeEvent.offsetY });
     };
-    // Click to toggle drag mode
-    const onClick = (e) => {
-      if (zoomStates[idx].scale > 1) {
-        if (!(isDragging && draggingCardIdx === idx)) {
-          // Start dragging
-          const { scale, x, y } = zoomStates[idx];
-          const rect = e.currentTarget.getBoundingClientRect();
-          const clickX = e.clientX - rect.left - containerWidth / 2 - x * scale;
-          const clickY = e.clientY - rect.top - containerHeight / 2 - y * scale;
-          startDrag(idx, { x: clickX, y: clickY });
-        } else {
-          // Stop dragging
-          stopDrag();
-        }
+    // Click and hold to drag
+    const onMouseDown = (e) => {
+      if (e.button === 0 && zoomStates[idx].scale > 1) {
+        const { scale, x, y } = zoomStates[idx];
+        const rect = e.currentTarget.getBoundingClientRect();
+        const clickX = e.clientX - rect.left - containerWidth / 2 - x * scale;
+        const clickY = e.clientY - rect.top - containerHeight / 2 - y * scale;
+        startDrag(idx, { x: clickX, y: clickY });
       }
     };
-    // Mouse enter/leave for robust cursor
+    const onMouseUp = (e) => {
+      if (isDragging && draggingCardIdx === idx) {
+        stopDrag();
+      }
+    };
+    const onMouseLeave = (e) => {
+      if (isDragging && draggingCardIdx === idx) {
+        stopDrag();
+      }
+      setIsMouseOver(false);
+    };
     const onMouseEnter = () => setIsMouseOver(true);
-    const onMouseLeave = () => setIsMouseOver(false);
     // Move drag handlers to window for global drag
     React.useEffect(() => {
       if (!(isDragging && draggingCardIdx === idx)) return;
@@ -168,11 +171,18 @@ function App() {
           return newStates;
         });
       };
+      const handleUp = () => {
+        if (isDragging && draggingCardIdx === idx) {
+          stopDrag();
+        }
+      };
       window.addEventListener('mousemove', handleMove);
+      window.addEventListener('mouseup', handleUp);
       return () => {
         window.removeEventListener('mousemove', handleMove);
+        window.removeEventListener('mouseup', handleUp);
       };
-    }, [isDragging, draggingCardIdx, dragOffset, zoomStates, idx, lockZoom, containerWidth, containerHeight]);
+    }, [isDragging, draggingCardIdx, dragOffset, zoomStates, idx, lockZoom, containerWidth, containerHeight, stopDrag]);
     // When scale is reset to 1, also reset pan to center and stop dragging
     React.useEffect(() => {
       if (zoomStates[idx].scale === 1 && (zoomStates[idx].x !== 0 || zoomStates[idx].y !== 0)) {
@@ -231,9 +241,10 @@ function App() {
         <div
           style={{ width: '100%', height: expanded ? 500 : 260, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#eee', overflow: 'hidden' }}
           onWheel={onWheel}
-          onClick={onClick}
-          onMouseEnter={onMouseEnter}
+          onMouseDown={onMouseDown}
+          onMouseUp={onMouseUp}
           onMouseLeave={onMouseLeave}
+          onMouseEnter={onMouseEnter}
         >
           <img
             ref={imgRef}
@@ -285,7 +296,7 @@ function App() {
       </div>
       <div style={{ maxWidth: 1100, margin: '0 auto', background: 'none', borderRadius: 24, padding: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-          <div style={{ fontSize: 20, fontWeight: 500 }}>group: front_a || 1/x</div>
+          <div style={{ fontSize: 20, fontWeight: 500 }}>group: front_a || {groupIdx + 1}/{TOTAL_GROUPS}</div>
           <label style={{ fontSize: 18, display: 'flex', alignItems: 'center', gap: 4 }}>
             move together
             <input type="checkbox" checked={lockZoom} onChange={e => setLockZoom(e.target.checked)} style={{ width: 20, height: 20 }} />
