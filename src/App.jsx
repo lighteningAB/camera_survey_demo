@@ -110,6 +110,17 @@ function App() {
     return { imgW, imgH };
   }
 
+  // In App, add a function to reset zoom/pan for a given card
+  const openExpand = (idx) => {
+    // Reset zoom and pan for the expanded image
+    setZoomStates((prev) => {
+      let newStates = [...prev];
+      newStates[idx] = { scale: 1, x: 0, y: 0 };
+      return newStates;
+    });
+    setExpandedIdx(idx);
+  };
+
   // PhotoCard component
   function PhotoCard({ idx, expanded, onExpand, draggingCardIdx, dragOffset, isDragging, startDrag, stopDrag }) {
     const imgRef = useRef();
@@ -291,7 +302,7 @@ function App() {
         </div>
         <div style={{ fontSize: 18, marginBottom: 24 }}>
           select the best and worst in each group, please compare and look closely, zoom in with scroll wheel<br />
-          and move with middle mouse button
+          and drag with left mouse button
         </div>
       </div>
       <div style={{ maxWidth: 1100, margin: '0 auto', background: 'none', borderRadius: 24, padding: 16 }}>
@@ -309,7 +320,7 @@ function App() {
               <PhotoCard
                 idx={idx}
                 expanded={expandedIdx === idx}
-                onExpand={setExpandedIdx}
+                onExpand={openExpand}
                 draggingCardIdx={draggingCardIdx}
                 dragOffset={dragOffset}
                 isDragging={isDragging}
@@ -352,7 +363,7 @@ function App() {
         <Modal onClose={() => setExpandedIdx(null)}>
           <PhotoCard
             idx={expandedIdx}
-            expanded={expandedIdx === idx}
+            expanded={true}
             onExpand={() => setExpandedIdx(null)}
             draggingCardIdx={draggingCardIdx}
             dragOffset={dragOffset}
