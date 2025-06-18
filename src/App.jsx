@@ -28,6 +28,12 @@ function App() {
   const [lockZoom, setLockZoom] = useState(false);
   // State for expand modal
   const [expandedIdx, setExpandedIdx] = useState(null);
+  // State for compare mode
+  const [compareMode, setCompareMode] = useState(false);
+  const [selectedForCompare, setSelectedForCompare] = useState(Array(4).fill(false));
+  const [equivalent, setEquivalent] = useState(Array(TOTAL_GROUPS).fill(false));
+  // Move together for compare modal
+  const [compareLockZoom, setCompareLockZoom] = useState(false);
   // Drag state (global for all PhotoCards)
   const [draggingCardIdx, setDraggingCardIdx] = useState(null); // index of card being dragged, or null
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -47,12 +53,30 @@ function App() {
     });
   };
 
+  // Handler for compare selection
+  const handleCompareSelect = (idx) => {
+    setSelectedForCompare(prev => {
+      const next = [...prev];
+      next[idx] = !next[idx];
+      return next;
+    });
+  };
+
+  // Handler for equivalent selection
+  const handleEquivalent = () => {
+    setEquivalent(prev => {
+      const next = [...prev];
+      next[groupIdx] = !next[groupIdx];
+      return next;
+    });
+  };
+
   // Handlers for zoom/pan
-  const handleZoom = (idx, delta, origin) => {
+  const handleZoom = (idx, delta, origin, useCompareLock) => {
     setZoomStates((prev) => {
       const newScale = clamp(prev[idx].scale * (delta > 0 ? 1.1 : 0.9), 1, 5);
       let newStates = [...prev];
-      if (lockZoom) {
+      if (lockZoom || useCompareLock) {
         newStates = newStates.map(() => ({ ...prev[idx], scale: newScale }));
       } else {
         newStates[idx] = { ...prev[idx], scale: newScale };
@@ -60,10 +84,10 @@ function App() {
       return newStates;
     });
   };
-  const handlePan = (idx, dx, dy) => {
+  const handlePan = (idx, dx, dy, useCompareLock) => {
     setZoomStates((prev) => {
       let newStates = [...prev];
-      if (lockZoom) {
+      if (lockZoom || useCompareLock) {
         newStates = newStates.map((z) => ({ ...z, x: z.x + dx, y: z.y + dy }));
       } else {
         newStates[idx] = { ...prev[idx], x: prev[idx].x + dx, y: prev[idx].y + dy };
@@ -81,6 +105,10 @@ function App() {
       }
       return newStates;
     });
+  };
+  // Reset all zoom/pan
+  const resetAllZoom = () => {
+    setZoomStates(Array(4).fill().map(() => ({ scale: 1, x: 0, y: 0 })));
   };
 
   // Navigation
@@ -122,7 +150,7 @@ function App() {
   };
 
   // PhotoCard component
-  function PhotoCard({ idx, expanded, onExpand, draggingCardIdx, dragOffset, isDragging, startDrag, stopDrag }) {
+  function PhotoCard({ idx, expanded, onExpand, draggingCardIdx, dragOffset, isDragging, startDrag, stopDrag, isModal, useCompareLock }) {
     const imgRef = useRef();
     const [isMouseOver, setIsMouseOver] = useState(false);
     const containerWidth = expanded ? 350 : 200;
@@ -130,11 +158,13 @@ function App() {
 
     // Mouse wheel for zoom
     const onWheel = (e) => {
+      if (!isModal) return;
       e.preventDefault();
-      handleZoom(idx, e.deltaY, { x: e.nativeEvent.offsetX, y: e.nativeEvent.offsetY });
+      handleZoom(idx, e.deltaY, { x: e.nativeEvent.offsetX, y: e.nativeEvent.offsetY }, useCompareLock);
     };
     // Click and hold to drag
     const onMouseDown = (e) => {
+      if (!isModal) return;
       if (e.button === 0 && zoomStates[idx].scale > 1) {
         const { scale, x, y } = zoomStates[idx];
         const rect = e.currentTarget.getBoundingClientRect();
@@ -144,20 +174,26 @@ function App() {
       }
     };
     const onMouseUp = (e) => {
+      if (!isModal) return;
       if (isDragging && draggingCardIdx === idx) {
         stopDrag();
       }
     };
     const onMouseLeave = (e) => {
+      if (!isModal) return;
       if (isDragging && draggingCardIdx === idx) {
         stopDrag();
       }
       setIsMouseOver(false);
     };
-    const onMouseEnter = () => setIsMouseOver(true);
+    const onMouseEnter = () => {
+      if (!isModal) return;
+      setIsMouseOver(true);
+    };
+
     // Move drag handlers to window for global drag
     React.useEffect(() => {
-      if (!(isDragging && draggingCardIdx === idx)) return;
+      if (!isModal || !(isDragging && draggingCardIdx === idx)) return;
       const handleMove = (e) => {
         const { scale } = zoomStates[idx];
         const container = imgRef.current?.parentElement;
@@ -174,7 +210,7 @@ function App() {
         newY = Math.max(-maxY, Math.min(maxY, newY));
         setZoomStates((prev) => {
           let newStates = [...prev];
-          if (lockZoom) {
+          if (lockZoom || useCompareLock) {
             newStates = newStates.map((z) => ({ ...z, x: newX, y: newY }));
           } else {
             newStates[idx] = { ...prev[idx], x: newX, y: newY };
@@ -193,9 +229,11 @@ function App() {
         window.removeEventListener('mousemove', handleMove);
         window.removeEventListener('mouseup', handleUp);
       };
-    }, [isDragging, draggingCardIdx, dragOffset, zoomStates, idx, lockZoom, containerWidth, containerHeight, stopDrag]);
+    }, [isModal, isDragging, draggingCardIdx, dragOffset, zoomStates, idx, lockZoom, useCompareLock, containerWidth, containerHeight, stopDrag]);
+
     // When scale is reset to 1, also reset pan to center and stop dragging
     React.useEffect(() => {
+      if (!isModal) return;
       if (zoomStates[idx].scale === 1 && (zoomStates[idx].x !== 0 || zoomStates[idx].y !== 0)) {
         setZoomStates((prev) => {
           let newStates = [...prev];
@@ -206,12 +244,12 @@ function App() {
       if (zoomStates[idx].scale === 1 && (isDragging && draggingCardIdx === idx)) {
         stopDrag();
       }
-      // eslint-disable-next-line
-    }, [zoomStates[idx].scale]);
+    }, [isModal, zoomStates[idx].scale, idx, isDragging, draggingCardIdx, stopDrag]);
+
     // Style for zoom/pan
     const { scale, x, y } = zoomStates[idx];
     let cursor = 'default';
-    if (scale > 1) {
+    if (isModal && scale > 1) {
       if (isDragging && draggingCardIdx === idx) cursor = 'grabbing';
       else if (isMouseOver) cursor = 'grab';
     }
@@ -225,24 +263,85 @@ function App() {
       userSelect: 'none',
       pointerEvents: expanded ? 'auto' : 'auto',
     };
+
     return (
       <div
         className="photo-card"
-        style={{ position: 'relative', background: '#fff', borderRadius: 24, border: '2px solid #222', minHeight: expanded ? 500 : 260, minWidth: expanded ? 350 : 200, boxShadow: '2px 2px 0 #222', margin: 8, overflow: 'hidden', }}
+        style={{ 
+          position: 'relative', 
+          background: '#fff', 
+          border: '2px solid #222', 
+          minHeight: expanded ? 500 : 260, 
+          minWidth: expanded ? 350 : 200, 
+          boxShadow: '2px 2px 0 #222', 
+          overflow: 'hidden',
+        }}
       >
         {/* Expand button */}
-        <button
-          onClick={() => onExpand(idx)}
-          style={{ position: 'absolute', top: 8, right: 8, zIndex: 2, background: '#fff', border: '1px solid #222', borderRadius: 8, padding: 2, cursor: 'pointer', fontWeight: 'bold' }}
-          title="Expand"
-        >
-          &#x2922;
-        </button>
-        {/* Reset zoom button (only in expanded) */}
-        {expanded && (
+        {!isModal && (
+          <button
+            onClick={() => onExpand(idx)}
+            style={{ 
+              position: 'absolute', 
+              top: 8, 
+              left: 8, 
+              zIndex: 2, 
+              background: '#fff', 
+              border: '1px solid #222', 
+              borderRadius: 8, 
+              padding: 2, 
+              cursor: 'pointer', 
+              fontWeight: 'bold' 
+            }}
+            title="Expand"
+          >
+            &#x2922;
+          </button>
+        )}
+        {/* Compare checkbox */}
+        {!isModal && (
+          <label
+            style={{
+              position: 'absolute',
+              top: 8,
+              right: 8,
+              zIndex: 2,
+              background: '#fff',
+              border: '1px solid #222',
+              borderRadius: 8,
+              padding: '2px 8px',
+              cursor: 'pointer',
+              fontSize: 12,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4
+            }}
+          >
+            Add to compare
+            <input
+              type="checkbox"
+              checked={selectedForCompare[idx]}
+              onChange={() => handleCompareSelect(idx)}
+              style={{ margin: 0 }}
+            />
+          </label>
+        )}
+        {/* Reset zoom button (only in modal) */}
+        {isModal && scale > 1 && (
           <button
             onClick={() => resetZoom(idx)}
-            style={{ position: 'absolute', top: 8, left: 8, zIndex: 2, background: '#fff', border: '1px solid #222', borderRadius: 8, padding: 2, cursor: 'pointer', fontWeight: 'bold' }}
+            style={{ 
+              position: 'absolute', 
+              top: 8, 
+              left: 8, 
+              zIndex: 2, 
+              background: '#fff', 
+              border: '1px solid #222', 
+              borderRadius: 8, 
+              padding: 2, 
+              cursor: 'pointer', 
+              fontWeight: 'bold' 
+            }}
             title="Reset zoom"
           >
             &#x21bb;
@@ -250,7 +349,15 @@ function App() {
         )}
         {/* Image preview */}
         <div
-          style={{ width: '100%', height: expanded ? 500 : 260, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#eee', overflow: 'hidden' }}
+          style={{ 
+            width: '100%', 
+            height: expanded ? 500 : 260, 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            background: '#eee', 
+            overflow: 'hidden' 
+          }}
           onWheel={onWheel}
           onMouseDown={onMouseDown}
           onMouseUp={onMouseUp}
@@ -272,7 +379,7 @@ function App() {
   // Modal for expanded view
   const Modal = ({ children, onClose }) => (
     <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.3)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={onClose}>
-      <div style={{ background: '#fff', borderRadius: 24, border: '2px solid #222', boxShadow: '4px 4px 0 #222', padding: 24, position: 'relative' }} onClick={e => e.stopPropagation()}>
+      <div style={{ background: '#fff', border: '2px solid #222', boxShadow: '4px 4px 0 #222', padding: 24, position: 'relative' }} onClick={e => e.stopPropagation()}>
         <button onClick={onClose} style={{ position: 'absolute', top: 8, right: 8, background: '#fff', border: '1px solid #222', borderRadius: 8, padding: 2, cursor: 'pointer', fontWeight: 'bold' }}>&#x2715;</button>
         {children}
       </div>
@@ -301,20 +408,28 @@ function App() {
           />
         </div>
         <div style={{ fontSize: 18, marginBottom: 24 }}>
-          select the best and worst in each group, please compare and look closely, zoom in with scroll wheel<br />
-          and drag with left mouse button
+          select the best and worst in each group, please compare and look closely
         </div>
       </div>
-      <div style={{ maxWidth: 1100, margin: '0 auto', background: 'none', borderRadius: 24, padding: 16 }}>
+      <div style={{ maxWidth: 1100, margin: '0 auto', background: 'none', padding: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
           <div style={{ fontSize: 20, fontWeight: 500 }}>group: front_a || {groupIdx + 1}/{TOTAL_GROUPS}</div>
-          <label style={{ fontSize: 18, display: 'flex', alignItems: 'center', gap: 4 }}>
-            move together
-            <input type="checkbox" checked={lockZoom} onChange={e => setLockZoom(e.target.checked)} style={{ width: 20, height: 20 }} />
-          </label>
+          <button
+            onClick={() => setCompareMode(!compareMode)}
+            style={{
+              fontSize: 16,
+              borderRadius: 8,
+              border: '2px solid #222',
+              background: '#fff',
+              padding: '4px 16px',
+              cursor: 'pointer'
+            }}
+          >
+            {compareMode ? 'Exit Compare' : 'Compare Selected'}
+          </button>
         </div>
         {/* Photo cards */}
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginBottom: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
           {[0, 1, 2, 3].map((idx) => (
             <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
               <PhotoCard
@@ -326,6 +441,7 @@ function App() {
                 isDragging={isDragging}
                 startDrag={startDrag}
                 stopDrag={stopDrag}
+                isModal={false}
               />
               {/* Best/Worst checkboxes */}
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 8 }}>
@@ -351,6 +467,18 @@ function App() {
             </div>
           ))}
         </div>
+        {/* Equivalent checkbox */}
+        <div style={{ display: 'flex', justifyContent: 'flex-start', marginTop: 8, marginLeft: 0 }}>
+          <label style={{ fontSize: 16, display: 'flex', alignItems: 'center', gap: 4, marginLeft: 24 }}>
+            The remaining are equivalent
+            <input
+              type="checkbox"
+              checked={equivalent[groupIdx]}
+              onChange={handleEquivalent}
+              style={{ marginLeft: 4 }}
+            />
+          </label>
+        </div>
         {/* n/N indicator and navigation */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 24, marginTop: 16 }}>
           <button onClick={prevGroup} disabled={groupIdx === 0} style={{ fontSize: 20, borderRadius: 8, border: '2px solid #222', background: '#fff', padding: '4px 16px', cursor: groupIdx === 0 ? 'not-allowed' : 'pointer' }}>&lt;</button>
@@ -360,17 +488,49 @@ function App() {
       </div>
       {/* Expanded modal */}
       {expandedIdx !== null && (
-        <Modal onClose={() => setExpandedIdx(null)}>
+        <Modal onClose={() => { setExpandedIdx(null); resetAllZoom(); }}>
           <PhotoCard
             idx={expandedIdx}
             expanded={true}
-            onExpand={() => setExpandedIdx(null)}
+            onExpand={() => { setExpandedIdx(null); resetAllZoom(); }}
             draggingCardIdx={draggingCardIdx}
             dragOffset={dragOffset}
             isDragging={isDragging}
             startDrag={startDrag}
             stopDrag={stopDrag}
+            isModal={true}
+            useCompareLock={false}
           />
+        </Modal>
+      )}
+      {/* Compare modal */}
+      {compareMode && (
+        <Modal onClose={() => { setCompareMode(false); resetAllZoom(); }}>
+          <div style={{ position: 'relative' }}>
+            <label style={{ position: 'absolute', top: 0, left: 0, zIndex: 2, background: '#fff', border: '1px solid #222', borderRadius: 8, padding: '2px 8px', fontSize: 14, display: 'flex', alignItems: 'center', gap: 4 }}>
+              Move together
+              <input type="checkbox" checked={compareLockZoom} onChange={e => setCompareLockZoom(e.target.checked)} />
+            </label>
+            <div style={{ display: 'flex', gap: 16, marginTop: 32 }}>
+              {selectedForCompare.map((selected, idx) => (
+                selected && (
+                  <PhotoCard
+                    key={idx}
+                    idx={idx}
+                    expanded={true}
+                    onExpand={() => {}}
+                    draggingCardIdx={draggingCardIdx}
+                    dragOffset={dragOffset}
+                    isDragging={isDragging}
+                    startDrag={startDrag}
+                    stopDrag={stopDrag}
+                    isModal={true}
+                    useCompareLock={compareLockZoom}
+                  />
+                )
+              ))}
+            </div>
+          </div>
         </Modal>
       )}
     </div>
